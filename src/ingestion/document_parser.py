@@ -9,6 +9,11 @@ from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import sent_tokenize
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from collections import OrderedDict
+from ..config import settings
+from ..utils.logger_config import setup_logger
+
+# Setup a logger specific to this module
+logger = setup_logger(__name__, level=settings.LOG_LEVEL.upper() if hasattr(settings, 'LOG_LEVEL') else 'INFO')
 
 # Download necessary NLTK data
 try:
@@ -24,7 +29,7 @@ except LookupError:
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
-    print("Downloading spaCy model...")
+    logger.info("Downloading spaCy model...")
     from spacy.cli import download
     download("en_core_web_sm")
     nlp = spacy.load("en_core_web_sm")
@@ -50,7 +55,7 @@ class TextProcessor:
         """
         Extracts text from a PDF file using PyMuPDF.
         """
-        print(f"Extracting text from {pdf_path} using PyMuPDF...")
+        logger.info(f"Extracting text from {pdf_path} using PyMuPDF...")
         doc = fitz.open(pdf_path)
         text = ""
         for page in doc:
@@ -62,7 +67,7 @@ class TextProcessor:
         """
         Extracts text from a PDF file using pdfplumber (alternative).
         """
-        print(f"Extracting text from {pdf_path} using pdfplumber...")
+        logger.info(f"Extracting text from {pdf_path} using pdfplumber...")
         text = ""
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
@@ -73,7 +78,7 @@ class TextProcessor:
         """
         Reads text from a plain text file.
         """
-        print(f"Reading text from {file_path}...")
+        logger.info(f"Reading text from {file_path}...")
         with open(file_path, "r", encoding=encoding) as f:
             return f.read()
 
@@ -88,10 +93,7 @@ class TextProcessor:
         """
         Cleans the input text with various options.
         """
-        print(f"Cleaning text with the following options:")
-        print(f"  - Lemmatization/Stemming: {stem_method}")
-        print(f"  - Remove Consecutive Words: {remove_consecutive_words}")
-        print(f"  - Remove Duplicate Sentences: {remove_duplicate_sentences}")
+        logger.info(f"Cleaning text with the following options:")
 
         # --- Sentence-level cleaning (if requested) ---
         if remove_duplicate_sentences:
@@ -144,6 +146,6 @@ class TextProcessor:
         """
         Chunks the text into smaller pieces using LangChain's RecursiveCharacterTextSplitter.
         """
-        print("Chunking text...")
+        logger.info("Chunking text...")
         chunks = self.text_splitter.split_text(text)
         return chunks

@@ -1,6 +1,10 @@
 from src.ingestion.document_parser import TextProcessor
+from src.config import settings
+from src.utils.logger_config import setup_logger
 
-if __name__ == "__main__":
+logger = setup_logger(__name__, level=settings.LOG_LEVEL.upper() if hasattr(settings, 'LOG_LEVEL') else 'INFO')
+
+async def main_test_doc():
     # Create a dummy PDF and a text file for demonstration
     from fpdf import FPDF
 
@@ -36,21 +40,21 @@ if __name__ == "__main__":
 
     # 1. PDF Text Extraction
     pdf_text = processor.extract_text_from_pdf("./data/files/sample.pdf")
-    print("\n--- Extracted PDF Text ---")
-    print(pdf_text)
+    logger.info(pdf_text)
 
     # 2. Plain Text File Reading
     text_file_content = processor.read_text_file("./data/files/sample.txt")
-    print("\n--- Read Text File Content ---")
-    print(text_file_content)
+    logger.info(text_file_content)
 
     # 3. Text Cleaning
     cleaned_text = processor.clean_text(text_file_content, stem_method="spacy")
-    print("\n--- Cleaned Text (spaCy Lemmatization) ---")
-    print(cleaned_text)
+    logger.info(cleaned_text)
 
     # 4. Text Chunking
     text_chunks = processor.chunk_text(pdf_text)
-    print("\n--- Text Chunks ---")
     for i, chunk in enumerate(text_chunks):
-        print(f"Chunk {i+1}: {chunk}\n")
+        logger.info(f"Chunk {i+1}: {chunk}\n")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main_test_doc())
