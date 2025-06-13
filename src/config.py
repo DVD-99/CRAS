@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     TTS_MELOTTS_SPEAKER_ID: Optional[str] = "EN-US" # e.g., "EN-Default" for some MeloTTS versions
     TTS_MELOTTS_DEVICE: str = "mps" # For Apple Silicon, can also be "cpu"
 
+    # Embedding Model
+    EMBEDDING_MODEL_NAME: str = "all-MiniLM-L6-v2"
+
     # Logging Level
     LOG_LEVEL: str = "INFO"
 
