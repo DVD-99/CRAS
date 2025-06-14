@@ -3,6 +3,8 @@ CRAS is a text-driven assistant designed to act as a personalized cognitive part
 
 This project is built using a local-first approach, leveraging powerful open-source models optimized for Apple Silicon (MLX) to ensure privacy and performance. The core functionality is built on a Retrieval-Augmented Generation (RAG) pipeline.
 
+<img width="720" alt="Screenshot 2025-06-14 at 9 29 05 AM" src="https://github.com/user-attachments/assets/2aa291d3-a933-497f-9cfb-131b39866fee" />
+
 ## Core Features
 **Multimodal Ingestion:** Process PDF documents, plain text files, and audio files (`.mp3`, `.wav`, etc.).
 
