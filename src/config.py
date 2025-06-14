@@ -12,7 +12,8 @@ class Settings(BaseSettings):
 
     # LLM Configuration (MLX LM)
     # For MLX LM, this is typically a Hugging Face model identifier or local path
-    LLM_MODEL_PATH: str = "mlx-community/Meta-Llama-3.1-8B-Instruct-8bit" # Choose the model
+    # LLM_MODEL_PATH:str = "mlx-community/Phi-3.5-mini-instruct-4bit"
+    LLM_MODEL_PATH: str = "mlx-community/Meta-Llama-3.1-8B-Instruct-8bit"
 
     # TTS Configuration (MeloTTS)
     TTS_MELOTTS_VOICE: str = "EN" # Example voice, MeloTTS supports various
