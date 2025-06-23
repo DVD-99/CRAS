@@ -1,14 +1,21 @@
+import torch
+torch.classes.__path__ = []
 import streamlit as st
 import os
 import numpy as np
 import asyncio
+import nest_asyncio
 from uuid import uuid4
 from src.utils.logger_config import setup_logger
 from src.ingestion.document_parser import TextProcessor
 from src.external_services.embedding_client import EmbeddingClient
 from src.external_services.llm_client import LLMClient
 from src.external_services.asr_client import ASRClient
+from src.memory.semantic_memory import SemanticMemoryManager
+from src.memory.chroma_vector_store import ChromaVectorStore
+from src.memory.tinydb_doc_store import TinyDBDocumentStore
 
+nest_asyncio.apply()
 # --- Page Configuration ---
 st.set_page_config(
     page_title="CRAS - Cognitive Research Assistant System",
@@ -48,45 +55,63 @@ def get_text_processor():
     logger.info("Loading Text Processor Client...")
     return TextProcessor()
 
+@st.cache_resource
+def get_memory_manager():
+    logger.info("Initializing Semantic Memory Manager...")
+    vector_store = ChromaVectorStore()
+    doc_store = TinyDBDocumentStore()
+    # Get the already loaded clients
+    embedding_client = get_embedding_client()
+    llm_client = get_llm_client()
+    return SemanticMemoryManager(vector_store, doc_store, embedding_client, llm_client)
+
 # --- Load Models ---
 llm_client = get_llm_client()
 asr_client = get_asr_client()
 embedding_client = get_embedding_client()
 text_processor = get_text_processor()
+memory_manager = get_memory_manager()
 
+def run_async(awaitable):
+    """
+    Runs an awaitable coroutine in a new thread with its own event loop.
+    This is a robust replacement for asyncio.run() in Streamlit.
+    """
+    result = None
+    exception = None
 
-# --- Session State Management ---
-# Initialize session state variables if they don't exist
+    def run_in_loop():
+        nonlocal result, exception
+        try:
+            result = asyncio.run(awaitable)
+        except Exception as e:
+            exception = e
+
+    thread = threading.Thread(target=run_in_loop)
+    thread.start()
+    thread.join()
+
+    if exception:
+        raise exception
+        
+    return result
+
+# --- Session State Initialization ---
+# This block ensures all necessary keys exist before they are accessed.
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid4())
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "vector_store" not in st.session_state:
-    # This is our simplified, in-memory vector store for this session
-    st.session_state.vector_store = {
-        "chunks": [],
-        "embeddings": []
-    }
+if "conversation_log" not in st.session_state:
+    st.session_state.conversation_log = []
 
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = set()
 
-def run_async(awaitable):
-    """
-    Runs an awaitable coroutine and blocks until it is complete.
-    This is a replacement for asyncio.run() in Streamlit.
-    """
-    try:
-        # Try to get the running event loop
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # If no loop is running, create a new one
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(awaitable)
+if "last_processed_audio" not in st.session_state:
+    st.session_state.last_processed_audio = None
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 # --- Helper Functions ---
 def find_relevant_chunks(query_embedding, top_k=3):
@@ -136,12 +161,16 @@ async def process_files(uploaded_files):
 
             # 2. Chunk
             chunks = text_processor.chunk_text(text=text)
+            logger.info(f"Extracted {len(chunks)} chunks from {uploaded_file.name}")
 
             # 3. Embed and Store
             if chunks:
-                chunk_embeddings = embedding_client.embed_texts(chunks)
-                st.session_state.vector_store["chunks"].extend(chunks)
-                st.session_state.vector_store["embeddings"].extend(chunk_embeddings)
+                for chunk in chunks:
+                    await memory_manager.process_and_add_chunk(chunk, source_id=uploaded_file.name)
+            # if chunks:
+            #     chunk_embeddings = embedding_client.embed_texts(chunks)
+            #     st.session_state.vector_store["chunks"].extend(chunks)
+            #     st.session_state.vector_store["embeddings"].extend(chunk_embeddings)
             
             # Mark as processed
             st.session_state.processed_files.add(uploaded_file.name)
@@ -166,7 +195,7 @@ with st.sidebar:
     if uploaded_files:
         if st.button("Process Files"):
             # Run the async function using asyncio
-            run_async(process_files(uploaded_files))
+            asyncio.run(process_files(uploaded_files))
 
     st.header("Processed Files")
     if st.session_state.processed_files:
@@ -192,24 +221,22 @@ if prompt := st.chat_input("Ask a question about your documents..."):
     # Prepare and display the assistant's response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            # Embed the user's query
-            query_embedding = embedding_client.embed_query(prompt)
+             # This one call replaces embedding the query, searching, and building context
+            distilled_context = asyncio.run(memory_manager.get_relevant_context(prompt))
 
-            # Find relevant context from the vector store
-            context_chunks = find_relevant_chunks(query_embedding)
-            
-            if not context_chunks:
-                response_text = "I couldn't find any relevant information in the uploaded documents to answer your question. Please try processing a file first."
-                st.markdown(response_text)
+            if not distilled_context:
+                response_text = "I'm sorry, I couldn't find any relevant information..."
             else:
-                # Build the prompt for the LLM
-                context_str = "\n\n---\n\n".join(context_chunks)
-                system_prompt = "You are a helpful research assistant. Answer the user's question based *only* on the following context provided. If the answer is not in the context, say so."
-                full_prompt = f"CONTEXT:\n{context_str}\n\nQUESTION:\n{prompt}"
-                
-                # Generate the response
-                response_text = run_async(llm_client.generate_text(full_prompt, system_prompt=system_prompt))
-                st.markdown(response_text)
+                system_prompt = "You are a helpful research assistant. Answer the user's question based *only* on the following distilled context provided."
+                full_prompt = f"DISTILLED CONTEXT:\n{distilled_context}\n\nQUESTION:\n{prompt}"
+                response_text = asyncio.run(llm_client.generate_text(full_prompt, system_prompt=system_prompt))
             
+            st.markdown(response_text)
+
+        # After generating the response, save a summary of the turn
+        st.session_state.conversation_log.append({"role": "user", "content": prompt})
+        st.session_state.conversation_log.append({"role": "assistant", "content": response_text})
+        asyncio.run(memory_manager.save_conversation_summary(st.session_state.conversation_log[-2:])) # Summarize the last Q&A pair
+
     # Add assistant's response to session state
     st.session_state.messages.append({"role": "assistant", "content": response_text})
