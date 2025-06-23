@@ -1,4 +1,4 @@
-# cras_project/cras_core/external_services/asr_client.py
+# /src/external_services/asr_client.py
 import sys
 import time
 import traceback # Import traceback module

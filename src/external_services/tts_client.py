@@ -1,4 +1,4 @@
-# cras_project/cras_core/external_services/tts_client.py
+# /src/external_services/tts_client.py
 import traceback
 import os
 from typing import Optional
