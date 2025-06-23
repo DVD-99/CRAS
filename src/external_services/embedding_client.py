@@ -1,4 +1,4 @@
-# src/core/external_services/embedding_client.py
+# /src/external_services/embedding_client.py
 import time
 from typing import List
 import numpy as np

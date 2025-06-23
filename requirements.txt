@@ -25,3 +25,7 @@ watchdog==6.0.0
 sentence-transformers==4.1.0
 numpy==1.26.4
 tf-keras==2.19.0
+streamlit-mic-recorder==0.0.8
+tinydb==4.8.2
+chromadb==1.0.13
+nest_asyncio==1.6.0
