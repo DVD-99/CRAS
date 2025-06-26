@@ -23,7 +23,7 @@ class SemanticMemoryManager:
         self.embedding_client = embedding_client
         self.llm_client = llm_client
 
-    async def process_and_add_chunk(self, chunk: str, source_id: Optional[str] = None):
+    async def process_and_add_chunk(self, chunk: str, source_id: Optional[str] = None, source_type: str = "document"):
         """Processes a single text chunk and adds it to memory if it's new."""
         # 1. De-duplication: Hash the content to see if it exists
         chunk_hash = hashlib.sha256(chunk.encode()).hexdigest()
@@ -49,38 +49,42 @@ class SemanticMemoryManager:
             source_document_id=source_id,
             content=chunk,
             llm_summary=llm_summary.strip(),
-            llm_keywords=llm_keywords
+            llm_keywords=llm_keywords,
+            source_type=source_type
         )
         self.doc_store.upsert_note(new_note)
 
         # 4. Generate embedding and add to vector store
         embedding = self.embedding_client.embed_query(chunk)
-        self.vector_store.add_documents(ids=[new_note.id], embeddings=[embedding])
+        metadata = {"source_id": str(source_id), "source_type": source_type}
+        self.vector_store.add_documents(ids=[new_note.id], embeddings=[embedding], metadatas=[metadata])
         logger.info(f"Successfully added new memory note {new_note.id} for source {source_id}.")
 
     async def get_relevant_context(self, query: str, top_k: int = 5) -> Optional[str]:
         """
-        Searches memory for relevant chunks and uses an LLM to distill them
-        into a concise context block for the final prompt.
+        Searches memory across ALL source types for relevant chunks and uses an LLM
+        to distill them into a concise context block for the final prompt.
         """
         logger.info(f"Searching for context relevant to query: '{query}'")
         
         # 1. Search for similar documents in the vector store
         query_embedding = self.embedding_client.embed_query(query)
-        search_results = self.vector_store.search(query_embedding, top_k=top_k)
-        
-        if not search_results:
+        doc_results = self.vector_store.search(query_embedding, top_k=top_k, where_filter={"source_type": {"$eq": "document"}})
+        convo_results = self.vector_store.search(query_embedding, top_k=top_k, where_filter={"source_type": {"$eq": "conversation_summary"}})
+
+        if not doc_results or not convo_results:
             logger.warning("No relevant chunks found in semantic memory.")
             return None
 
-        retrieved_ids = [result[0] for result in search_results]
+        retrieved_ids = [result[0] for result in doc_results]
+        retrieved_ids += [result[0] for result in convo_results]
         retrieved_notes = self.doc_store.get_notes_by_ids(retrieved_ids)
         
         if not retrieved_notes:
             return None
 
         # 2. Context Scoping: Use LLM to extract only the most relevant sentences
-        context_str = "\n\n---\n\n".join([note.content for note in retrieved_notes])
+        context_str = "\n\n---\n\n".join([f"Source: {note.source_document_id or 'Conversation'}\nContent: {note.content}" for note in retrieved_notes])
         
         system_prompt = (
             "You are an expert at extracting information. From the TEXT below, "
@@ -92,7 +96,7 @@ class SemanticMemoryManager:
         distilled_context = await self.llm_client.generate_text(
             prompt=extraction_prompt,
             system_prompt=system_prompt,
-            max_tokens=500  # Limit the size of the extracted context
+            max_tokens=500
         )
         
         if not distilled_context.strip():
@@ -105,9 +109,8 @@ class SemanticMemoryManager:
     async def save_conversation_summary(self, conversation_log: List[dict]):
         """
         Summarizes a conversation and adds the summary as a new memory note.
-        This creates a learning loop.
         """
-        if len(conversation_log) < 2: # Don't summarize very short conversations
+        if len(conversation_log) < 2:
             return
 
         logger.info("Summarizing conversation to create a new memory.")
@@ -122,5 +125,4 @@ class SemanticMemoryManager:
         )
         
         if summary:
-            # Add the summary back into memory
-            await self.process_and_add_chunk(chunk=summary, source_id="conversation_summary")
+            await self.process_and_add_chunk(chunk=summary, source_id="conversation_summary", source_type="conversation_summary")

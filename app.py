@@ -227,7 +227,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
             if not distilled_context:
                 response_text = "I'm sorry, I couldn't find any relevant information..."
             else:
-                system_prompt = "You are a helpful research assistant. Answer the user's question based *only* on the following distilled context provided."
+                system_prompt = "You are a helpful sarcastic assistant. Answer the user's question based *only* on the following distilled context provided."
                 full_prompt = f"DISTILLED CONTEXT:\n{distilled_context}\n\nQUESTION:\n{prompt}"
                 response_text = asyncio.run(llm_client.generate_text(full_prompt, system_prompt=system_prompt))
             

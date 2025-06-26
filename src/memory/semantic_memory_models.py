@@ -11,6 +11,7 @@ class MemoryNote(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     chunk_hash: str = Field(index=True)  # To prevent duplicates
     source_document_id: Optional[str] = None
+    source_type: str = "document"  # e.g., "document", "webpage", "conversation"
     content: str
 
     # LLM-generated augmentations for better retrieval
