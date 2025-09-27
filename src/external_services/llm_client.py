@@ -42,8 +42,9 @@ class LLMClient:
     async def generate_text(
         self,
         prompt: str,
+        tools: Optional[str] = None,
         system_prompt: Optional[str] = None,
-        max_tokens: int = 512
+        max_tokens: int = 1024
     ) -> str:
         """
         Generates text based on the given prompt using a chat template.
@@ -58,6 +59,20 @@ class LLMClient:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
+
+        if tools:
+            # Find the system prompt and append tool info, or create a new system prompt
+            system_message_exists = False
+            for msg in messages:
+                if msg["role"] == "system":
+                    msg["content"] += f"\n\nYou have access to the following tools. To use a tool, respond ONLY with a JSON object with 'tool_name' and 'parameters' keys.\n{tools}"
+                    system_message_exists = True
+                    break
+            if not system_message_exists:
+                messages.insert(0, {
+                    "role": "system",
+                    "content": f"You have access to the following tools. To use a tool, respond ONLY with a JSON object with 'tool_name' and 'parameters' keys.\n{tools}"
+                })
 
         # Apply the chat template to format the prompt correctly for the model
         formatted_prompt = self.tokenizer.apply_chat_template(

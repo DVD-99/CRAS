@@ -7,11 +7,15 @@ from .semantic_memory_models import MemoryNote
 
 class VectorStoreInterface(ABC):
     @abstractmethod
-    def add_documents(self, ids: List[UUID], embeddings: List[np.ndarray]):
+    def add_documents(self, ids: List[UUID], embeddings: List[np.ndarray], metadatas: List[dict]):
         pass
 
     @abstractmethod
-    def search(self, query_embedding: np.ndarray, top_k: int) -> List[tuple[UUID, float]]:
+    def search(self, query_embedding: np.ndarray, top_k: int, where_filter: Optional[dict] = None) -> List[tuple[UUID, float]]:
+        pass
+
+    @abstractmethod
+    def count(self) -> int:
         pass
 
 class DocumentStoreInterface(ABC):
@@ -29,4 +33,8 @@ class DocumentStoreInterface(ABC):
 
     @abstractmethod
     def get_notes_by_ids(self, note_ids: List[UUID]) -> List[MemoryNote]:
+        pass
+
+    @abstractmethod
+    def count(self) -> int:
         pass

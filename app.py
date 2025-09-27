@@ -14,6 +14,8 @@ from src.external_services.asr_client import ASRClient
 from src.memory.semantic_memory import SemanticMemoryManager
 from src.memory.chroma_vector_store import ChromaVectorStore
 from src.memory.tinydb_doc_store import TinyDBDocumentStore
+from src.tools.tool_manager import ToolManager
+from src.agent.graph import AgenticGraph
 
 nest_asyncio.apply()
 # --- Page Configuration ---
@@ -65,36 +67,21 @@ def get_memory_manager():
     llm_client = get_llm_client()
     return SemanticMemoryManager(vector_store, doc_store, embedding_client, llm_client)
 
+@st.cache_resource
+def get_tool_manager(): return ToolManager()
+
+@st.cache_resource
+def get_agentic_graph():
+    logger.info("Initializing Agentic Graph...")
+    return AgenticGraph(get_llm_client(), get_memory_manager(), get_tool_manager())
+
 # --- Load Models ---
 llm_client = get_llm_client()
 asr_client = get_asr_client()
 embedding_client = get_embedding_client()
 text_processor = get_text_processor()
 memory_manager = get_memory_manager()
-
-def run_async(awaitable):
-    """
-    Runs an awaitable coroutine in a new thread with its own event loop.
-    This is a robust replacement for asyncio.run() in Streamlit.
-    """
-    result = None
-    exception = None
-
-    def run_in_loop():
-        nonlocal result, exception
-        try:
-            result = asyncio.run(awaitable)
-        except Exception as e:
-            exception = e
-
-    thread = threading.Thread(target=run_in_loop)
-    thread.start()
-    thread.join()
-
-    if exception:
-        raise exception
-        
-    return result
+agentic_graph = get_agentic_graph()
 
 # --- Session State Initialization ---
 # This block ensures all necessary keys exist before they are accessed.
@@ -227,10 +214,8 @@ if prompt := st.chat_input("Ask a question about your documents..."):
             if not distilled_context:
                 response_text = "I'm sorry, I couldn't find any relevant information..."
             else:
-                system_prompt = "You are a helpful sarcastic assistant. Answer the user's question based *only* on the following distilled context provided."
-                full_prompt = f"DISTILLED CONTEXT:\n{distilled_context}\n\nQUESTION:\n{prompt}"
-                response_text = asyncio.run(llm_client.generate_text(full_prompt, system_prompt=system_prompt))
-            
+                response_text = agentic_graph.invoke(prompt)
+
             st.markdown(response_text)
 
         # After generating the response, save a summary of the turn
